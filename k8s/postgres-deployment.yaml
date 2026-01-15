@@ -45,7 +45,7 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: TU-USUARIO/dvdrental-postgres:latest  # ⚠️ CAMBIA ESTO
+        image: darkdesco/postgres-dvdrental:latest
         ports:
         - containerPort: 5432
           name: postgres
