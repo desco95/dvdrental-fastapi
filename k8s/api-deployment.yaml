@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: api
-        image: TU-USUARIO/dvdrental-api:latest  # ⚠️ CAMBIA ESTO
+        image: darkdesco/postgres-dvdrental:latest
         ports:
         - containerPort: 8000
           name: http
