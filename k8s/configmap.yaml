@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dvdrental-config
+  namespace: dvdrental
+data:
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "dvdrental"
+  DB_USER: "postgres"
+  PORT: "8000"
