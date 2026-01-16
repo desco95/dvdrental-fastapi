@@ -6,6 +6,10 @@ Incluye una API REST para la gestión de rentas y una aplicación de escritorio 
 
 Hecho por
 Luis David Escobedo Ojeda
+Juan Pablo Almaguer Gomez
+Valeria Melissa Leilani Quintero Frausto
+Luz Andrea Villalpando Casillas 
+
 Ingeniería en Sistemas Computacionales
 Instituto Tecnológico de León
 
