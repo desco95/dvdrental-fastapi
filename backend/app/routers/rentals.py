@@ -57,7 +57,7 @@ async def create_rental(rental: RentalCreate):
     """
     Crear una nueva renta.
     
-    Necesita:
+    Requiere:
     - customer_id: ID del cliente
     - film_id: ID de la película
     - staff_id: ID del empleado
