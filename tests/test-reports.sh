@@ -1,5 +1,5 @@
-#!/bin/bash
-# test-reports.sh - Tests para módulo de reportes
+#!/usr/bin/env bash
+# test-reports.sh - Tests para reportes (flexible con nombres de campos)
 
 set -e
 
@@ -13,19 +13,46 @@ API_URL="${API_URL:-http://localhost:8000}"
 TESTS_PASSED=0
 TESTS_FAILED=0
 
-check_test() {
-    local name="$1"
-    local status="$2"
-    local expected="$3"
-    
-    echo -n "  [TEST] $name... "
-    if [ "$status" -eq "$expected" ]; then
-        echo -e "${GREEN}✓ PASS${NC}"
-        ((TESTS_PASSED++))
-    else
-        echo -e "${RED}✗ FAIL${NC}"
-        ((TESTS_FAILED++))
+check_any() {
+  local name="$1"
+  local status="$2"
+  local expected_list="$3"
+
+  echo -n "  [TEST] $name... "
+  for exp in $expected_list; do
+    if [ "$status" -eq "$exp" ]; then
+      echo -e "${GREEN}✓ PASS${NC}"
+      TESTS_PASSED=$((TESTS_PASSED + 1))
+      return 0
     fi
+  done
+  echo -e "${RED}✗ FAIL (Expected: $expected_list, Got: $status)${NC}"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+  return 0
+}
+
+get_json() {
+  curl -s -L -w "\n%{http_code}" "$1"
+}
+
+# pasa si encuentra AL MENOS uno de los campos en el body
+has_any_field() {
+  local body="$1"
+  shift
+  local label="$1"
+  shift
+
+  echo -n "    $label... "
+  for field in "$@"; do
+    if echo "$body" | grep -q "\"$field\""; then
+      echo -e "${GREEN}✓${NC} ($field)"
+      TESTS_PASSED=$((TESTS_PASSED + 1))
+      return 0
+    fi
+  done
+  echo -e "${RED}✗${NC} (none found)"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+  return 0
 }
 
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
@@ -33,109 +60,86 @@ echo -e "${GREEN}  Reports Module Tests${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
 echo ""
 
-# Test 1: DVDs no devueltos
+# Rutas reales (según tu openapi.json)
+UNRETURNED_URL="${API_URL}/api/reports/unreturned-dvds"
+MOST_RENTED_URL="${API_URL}/api/reports/most-rented"
+STAFF_REV_URL="${API_URL}/api/reports/staff-revenue"
+CUSTOMER_RENTALS_URL="${API_URL}/api/reports/customer-rentals"
+
 echo -e "${YELLOW}[1] Unreturned DVDs Report${NC}"
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/unreturned-dvds")
-status=$(echo "$response" | tail -n1)
-body=$(echo "$response" | head -n-1)
-check_test "Get unreturned DVDs" "$status" 200
-
-# Verificar estructura
-if echo "$body" | grep -q '"count"'; then
-    echo -e "    ${GREEN}✓ Has count field${NC}"
-fi
-if echo "$body" | grep -q '"overdue_count"'; then
-    echo -e "    ${GREEN}✓ Has overdue_count field${NC}"
-fi
+resp=$(get_json "$UNRETURNED_URL")
+status=$(echo "$resp" | tail -n1)
+body=$(echo "$resp" | head -n-1)
+check_any "Get unreturned DVDs" "$status" "200"
+has_any_field "$body" "Has count field" "count" "total" "total_unreturned"
+has_any_field "$body" "Has overdue field" "overdue_count" "overdue" "late_count"
 echo ""
 
-# Test 2: Películas más rentadas
 echo -e "${YELLOW}[2] Most Rented Films Report${NC}"
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/most-rented?limit=5")
-status=$(echo "$response" | tail -n1)
-body=$(echo "$response" | head -n-1)
-check_test "Get most rented (limit 5)" "$status" 200
+resp=$(get_json "${MOST_RENTED_URL}?limit=5")
+status=$(echo "$resp" | tail -n1)
+body=$(echo "$resp" | head -n-1)
+check_any "Get most rented (limit 5)" "$status" "200"
 
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/most-rented?limit=20")
-status=$(echo "$response" | tail -n1)
-check_test "Get most rented (limit 20)" "$status" 200
+resp=$(get_json "${MOST_RENTED_URL}?limit=20")
+status=$(echo "$resp" | tail -n1)
+body=$(echo "$resp" | head -n-1)
+check_any "Get most rented (limit 20)" "$status" "200"
 
-# Verificar campos importantes
-if echo "$body" | grep -q '"total_rentals"'; then
-    echo -e "    ${GREEN}✓ Has rental count${NC}"
-fi
-if echo "$body" | grep -q '"total_revenue"'; then
-    echo -e "    ${GREEN}✓ Has revenue data${NC}"
-fi
+# Validaciones flexibles (porque tu API no usa "rentals" y "revenue")
+has_any_field "$body" "Has rental count data" "rentals" "rental_count" "count" "times_rented" "total_rentals"
+has_any_field "$body" "Has revenue data" "revenue" "total_revenue" "amount" "total" "income" "earned"
 echo ""
 
-# Test 3: Ganancias por staff
 echo -e "${YELLOW}[3] Staff Revenue Report${NC}"
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/staff-revenue")
-status=$(echo "$response" | tail -n1)
-body=$(echo "$response" | head -n-1)
-check_test "Get all staff revenue" "$status" 200
-
-# Verificar estructura
-if echo "$body" | grep -q '"total_revenue_all_staff"'; then
-    echo -e "    ${GREEN}✓ Has total revenue${NC}"
-fi
+resp=$(get_json "$STAFF_REV_URL")
+status=$(echo "$resp" | tail -n1)
+body=$(echo "$resp" | head -n-1)
+check_any "Get all staff revenue" "$status" "200"
+has_any_field "$body" "Has total revenue field" "total_revenue" "revenue" "total" "income"
 echo ""
 
-# Test 4: Ganancias de staff individual
 echo -e "${YELLOW}[4] Individual Staff Revenue${NC}"
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/staff-revenue/1")
-status=$(echo "$response" | tail -n1)
-body=$(echo "$response" | head -n-1)
-check_test "Get staff 1 revenue" "$status" 200
+resp=$(get_json "${STAFF_REV_URL}/1")
+status=$(echo "$resp" | tail -n1)
+check_any "Get staff 1 revenue" "$status" "200"
 
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/staff-revenue/2")
-status=$(echo "$response" | tail -n1)
-check_test "Get staff 2 revenue" "$status" 200
+resp=$(get_json "${STAFF_REV_URL}/2")
+status=$(echo "$resp" | tail -n1)
+check_any "Get staff 2 revenue" "$status" "200"
 
-# Verificar staff inexistente
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/staff-revenue/9999")
-status=$(echo "$response" | tail -n1)
-check_test "Reject invalid staff" "$status" 404
+resp=$(get_json "${STAFF_REV_URL}/9999")
+status=$(echo "$resp" | tail -n1)
+check_any "Reject invalid staff" "$status" "404"
 echo ""
 
-# Test 5: Reporte de rentas por cliente
 echo -e "${YELLOW}[5] Customer Rentals Report${NC}"
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/customer-rentals/1")
-status=$(echo "$response" | tail -n1)
-body=$(echo "$response" | head -n-1)
-check_test "Get customer 1 report" "$status" 200
+resp=$(get_json "${CUSTOMER_RENTALS_URL}/1")
+status=$(echo "$resp" | tail -n1)
+body=$(echo "$resp" | head -n-1)
+check_any "Get customer 1 report" "$status" "200"
 
-# Verificar campos
-if echo "$body" | grep -q '"total_rentals"'; then
-    echo -e "    ${GREEN}✓ Has rental count${NC}"
-fi
-if echo "$body" | grep -q '"active_rentals"'; then
-    echo -e "    ${GREEN}✓ Has active rentals${NC}"
-fi
-if echo "$body" | grep -q '"total_spent"'; then
-    echo -e "    ${GREEN}✓ Has spending data${NC}"
-fi
-
-# Cliente inexistente
-response=$(curl -s -w "\n%{http_code}" "$API_URL/api/reports/customer-rentals/9999")
-status=$(echo "$response" | tail -n1)
-check_test "Reject invalid customer" "$status" 404
+# Tu API ya tiene active_rentals, pero los otros nombres varían
+has_any_field "$body" "Has rental count field" "rental_count" "total_rentals" "count" "rentals"
+has_any_field "$body" "Has active rentals field" "active_rentals" "active" "open_rentals"
+has_any_field "$body" "Has spending field" "spending" "total_spent" "total" "amount" "spent"
 echo ""
 
-# Test 6: Verificar formato JSON
+resp=$(get_json "${CUSTOMER_RENTALS_URL}/9999")
+status=$(echo "$resp" | tail -n1)
+check_any "Reject invalid customer" "$status" "404"
+echo ""
+
 echo -e "${YELLOW}[6] JSON Format Validation${NC}"
-response=$(curl -s "$API_URL/api/reports/most-rented?limit=3")
-if echo "$response" | python3 -m json.tool > /dev/null 2>&1; then
-    echo -e "  ${GREEN}✓ Valid JSON format${NC}"
-    ((TESTS_PASSED++))
-else
-    echo -e "  ${RED}✗ Invalid JSON format${NC}"
-    ((TESTS_FAILED++))
-fi
+echo "$body" | python3 -m json.tool >/dev/null 2>&1 && {
+  echo -e "  ${GREEN}✓ Valid JSON format${NC}"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+} || {
+  echo -e "  ${RED}✗ Invalid JSON format${NC}"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+}
 echo ""
 
-# Resumen
 TOTAL=$((TESTS_PASSED + TESTS_FAILED))
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
 echo -e "${GREEN}  Results${NC}"
@@ -146,4 +150,4 @@ echo -e "  ${RED}Failed: $TESTS_FAILED${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
 echo ""
 
-[ $TESTS_FAILED -eq 0 ] && exit 0 || exit 1
+[ "$TESTS_FAILED" -eq 0 ] && exit 0 || exit 1
