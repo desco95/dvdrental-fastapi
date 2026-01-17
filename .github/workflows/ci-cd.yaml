@@ -34,8 +34,11 @@ jobs:
         run: |
           chmod +x tests/*.sh
           export API_URL=http://localhost:8000
-          ./tests/test-api.sh
+          echo "=== Running test-api with trace ==="
+          bash -x ./tests/test-api.sh
+          echo "=== Running test-rentants ==="
           ./tests/test-rentants.sh
+          echo "=== Running test-reports ==="
           ./tests/test-reports.sh
 
       - name: Logs on failure
