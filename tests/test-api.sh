@@ -1,5 +1,5 @@
-#!/bin/bash
-# test-api.sh - Basic API checks (robust for redirects)
+#!/usr/bin/env bash
+# test-api.sh - Basic API checks (robust + no phantom fails)
 
 set -e
 
@@ -10,12 +10,11 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 API_URL="${API_URL:-http://localhost:8000}"
-
 TESTS_PASSED=0
 TESTS_FAILED=0
 
 check_any() {
-  # check_any "Name" "<status>" "200 307 308"
+  # check_any "Name" <status> "200 307 308"
   local name="$1"
   local status="$2"
   local expected_list="$3"
@@ -24,23 +23,18 @@ check_any() {
   for exp in $expected_list; do
     if [ "$status" -eq "$exp" ]; then
       echo -e "${GREEN}✓ PASS${NC}"
-      ((TESTS_PASSED++))
+      TESTS_PASSED=$((TESTS_PASSED + 1))
       return 0
     fi
   done
+
   echo -e "${RED}✗ FAIL (Expected: $expected_list, Got: $status)${NC}"
-  ((TESTS_FAILED++))
+  TESTS_FAILED=$((TESTS_FAILED + 1))
   return 0
 }
 
 get_status() {
-  # follows redirects and returns status code
   curl -s -L -o /dev/null -w "%{http_code}" "$1"
-}
-
-get_body_and_status() {
-  # returns "BODY\nSTATUS"
-  curl -s -L -w "\n%{http_code}" "$1"
 }
 
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
@@ -59,37 +53,32 @@ for i in {1..30}; do
 done
 echo ""
 
-echo -e "${YELLOW}[1/7] Health & Info${NC}"
-
-# 1) Health endpoint (must be OK/healthy)
+echo -e "${YELLOW}[1/2] Health & Info${NC}"
 resp=$(curl -s -w "\n%{http_code}" "${API_URL}/health")
 status=$(echo "$resp" | tail -n1)
 body=$(echo "$resp" | head -n-1)
 check_any "Health Check" "$status" "200"
-echo "$body" | grep -Eiq "healthy|ok" || { echo -e "${RED}  Health body not OK${NC}"; ((TESTS_FAILED++)); }
 
-# 2) Root endpoint (often exists, allow 200 or redirect)
-status=$(get_status "${API_URL}/")
-check_any "Root /" "$status" "200 307 308 404"
+if echo "$body" | grep -Eiq "healthy|ok"; then
+  echo -e "  ${GREEN}✓ PASS${NC} (Health body OK)"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  echo -e "  ${RED}✗ FAIL${NC} (Health body not OK)"
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+fi
 
-# 3) OpenAPI json (FastAPI usually provides it)
-status=$(get_status "${API_URL}/openapi.json")
-check_any "OpenAPI /openapi.json" "$status" "200 307 308"
-
-# 4) Docs (FastAPI usually provides it)
-status=$(get_status "${API_URL}/docs")
-check_any "Docs /docs" "$status" "200 307 308"
-
+check_any "Root /" "$(get_status "${API_URL}/")" "200 307 308 404"
+check_any "OpenAPI /openapi.json" "$(get_status "${API_URL}/openapi.json")" "200 307 308"
+check_any "Docs /docs" "$(get_status "${API_URL}/docs")" "200 307 308"
 echo ""
 
-# OPTIONAL: if your API is mounted under /api, check /api/health too,
-# but allow 404 if project doesn't use that prefix.
-echo -e "${YELLOW}[2/7] API Prefix (optional)${NC}"
-status=$(get_status "${API_URL}/api/health")
-check_any "Optional /api/health" "$status" "200 307 308 404"
+echo -e "${YELLOW}[2/2] Quick API endpoints presence${NC}"
+# Estos endpoints existen en tu openapi.json (los probamos con status aceptable)
+check_any "GET /api/films/" "$(get_status "${API_URL}/api/films/")" "200"
+check_any "GET /api/customers/" "$(get_status "${API_URL}/api/customers/")" "200"
+check_any "GET /api/staff/" "$(get_status "${API_URL}/api/staff/")" "200"
 echo ""
 
-# Summary
 TOTAL=$((TESTS_PASSED + TESTS_FAILED))
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
 echo -e "${GREEN}  Results${NC}"
@@ -100,4 +89,4 @@ echo -e "  ${RED}Failed: $TESTS_FAILED${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════${NC}"
 echo ""
 
-[ $TESTS_FAILED -eq 0 ] && exit 0 || exit 1
+[ "$TESTS_FAILED" -eq 0 ] && exit 0 || exit 1
