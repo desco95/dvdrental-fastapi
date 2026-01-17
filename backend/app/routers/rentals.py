@@ -50,8 +50,10 @@ async def list_rentals(
             "data": rentals
         }
 
+@router.post("", response_model=dict, status_code=201)
 @router.post("/", response_model=dict, status_code=201)
 async def create_rental(rental: RentalCreate):
+
     """
     Crear una nueva renta.
     
